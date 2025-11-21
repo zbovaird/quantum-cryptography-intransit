@@ -1,0 +1,13 @@
+[project]
+name = "nonmarkov-ephemeral-crypto"
+version = "0.1.0"
+description = "Proof of concept for Non-Markovian Ephemeral Decryption Protocol"
+dependencies = [
+    "cryptography",
+    "flask",
+    "requests",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
