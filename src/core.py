@@ -1,16 +1,30 @@
 import hashlib
 import hmac
 import struct
+import os
 
 def sha256(data: bytes) -> bytes:
     """Computes SHA-256 hash of the input data."""
     return hashlib.sha256(data).digest()
 
-def xor_bytes(a: bytes, b: bytes) -> bytes:
-    """XORs two byte strings of equal length."""
-    if len(a) != len(b):
-        raise ValueError("Byte strings must be equal length")
-    return bytes(x ^ y for x, y in zip(a, b))
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+def encrypt_aes_gcm(key: bytes, plaintext: bytes, associated_data: bytes = None) -> tuple[bytes, bytes]:
+    """
+    Encrypts plaintext using AES-GCM.
+    Returns (nonce, ciphertext).
+    """
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
+    return nonce, ciphertext
+
+def decrypt_aes_gcm(key: bytes, nonce: bytes, ciphertext: bytes, associated_data: bytes = None) -> bytes:
+    """
+    Decrypts ciphertext using AES-GCM.
+    """
+    aesgcm = AESGCM(key)
+    return aesgcm.decrypt(nonce, ciphertext, associated_data)
 
 def hkdf_extract(salt: bytes, input_key_material: bytes) -> bytes:
     if salt is None or len(salt) == 0:

@@ -19,7 +19,9 @@ def run_demo():
     print(f"Encrypting for window [{t_start}, {t_end}]...")
     encryption_result = server.encrypt_for_alice(plaintext, t_start, t_end)
     ciphertext = encryption_result["ciphertext"]
+    nonce = encryption_result["nonce"]
     print(f"Ciphertext: {ciphertext.hex()}")
+    print(f"Nonce: {nonce.hex()}")
     
     # 3. Alice's Work
     print("Alice is computing public chain...")
@@ -46,8 +48,8 @@ def run_demo():
 
     # 6. Decryption
     print("Alice decrypting...")
-    k_final = alice_derive_final_key(k_public, k_private, len(ciphertext))
-    decrypted = alice_decrypt(ciphertext, k_final)
+    k_final = alice_derive_final_key(k_public, k_private)
+    decrypted = alice_decrypt(ciphertext, k_final, nonce)
     print(f"Decrypted: {decrypted}")
     
     if decrypted == plaintext:

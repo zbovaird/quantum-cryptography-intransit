@@ -2,7 +2,9 @@ import requests
 import binascii
 from src.alice import alice_compute_public_history, alice_compute_checksum, alice_derive_final_key, alice_decrypt
 
-BASE_URL = "http://localhost:5000"
+import os
+
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:5001")
 
 def run_client_demo():
     print("--- Starting HTTP Client Demo ---")
@@ -20,14 +22,16 @@ def run_client_demo():
     })
     
     if resp.status_code != 200:
-        print(f"Encryption failed: {resp.text}")
+        print(f"Encryption failed: {resp.status_code} {resp.text}")
         return
         
     data = resp.json()
     ciphertext = binascii.unhexlify(data["ciphertext"])
+    nonce = binascii.unhexlify(data["nonce"])
     pub_seed = binascii.unhexlify(data["public_seed"])
     pub_salt = binascii.unhexlify(data["public_salt"])
     print(f"Got ciphertext: {data['ciphertext']}")
+    print(f"Got nonce: {data['nonce']}")
     
     # 2. Alice Work
     print("Computing public chain...")
@@ -52,8 +56,8 @@ def run_client_demo():
     print("Got keys from server.")
     
     # 4. Decrypt
-    k_final = alice_derive_final_key(k_pub, k_priv, len(ciphertext))
-    decrypted = alice_decrypt(ciphertext, k_final)
+    k_final = alice_derive_final_key(k_pub, k_priv)
+    decrypted = alice_decrypt(ciphertext, k_final, nonce)
     print(f"Decrypted: {decrypted}")
     
     if decrypted == plaintext:

@@ -1,6 +1,6 @@
 import os
 import struct
-from .core import sha256, xor_bytes, hkdf, derive_public_key_piece
+from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm
 
 class Server:
     def __init__(self, public_seed=None, public_salt=None, server_secret=None):
@@ -94,14 +94,15 @@ class Server:
         k_private = sha256(temp_state)
         
         # 4. Derive K_final
-        # K_final = HKDF(K_public || K_private, length=len(plaintext)) for XOR
-        k_final = hkdf(k_public + k_private, len(plaintext), salt=b"encryption", info=b"xor_key")
+        # K_final = HKDF(K_public || K_private, length=32) for AES-GCM
+        k_final = hkdf(k_public + k_private, 32, salt=b"encryption", info=b"aes_gcm_key")
         
-        # 5. Encrypt (XOR)
-        ciphertext = xor_bytes(plaintext, k_final)
+        # 5. Encrypt (AES-GCM)
+        nonce, ciphertext = encrypt_aes_gcm(k_final, plaintext)
         
         return {
             "ciphertext": ciphertext,
+            "nonce": nonce,
             "t_start": t_start,
             "t_end": t_end,
             "public_seed": self.public_seed,

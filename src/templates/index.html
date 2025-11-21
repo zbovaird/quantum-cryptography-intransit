@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Non-Markovian Ephemeral Crypto</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Non-Markovian <span class="highlight">Ephemeral</span> Crypto</h1>
+            <p class="subtitle">Time-Locked Encryption Protocol</p>
+            <button class="secondary" onclick="resetServer()" style="width: auto; margin-top: 1rem;">↺ Reset
+                Demo</button>
+        </header>
+
+        <div class="dashboard">
+            <!-- Server State Panel -->
+            <div class="card server-state">
+                <h2>Server State</h2>
+                <div class="state-display">
+                    <div class="metric">
+                        <span class="label">Current Tick (t)</span>
+                        <span class="value" id="server-t">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Public Chain Length</span>
+                        <span class="value" id="chain-len">1</span>
+                    </div>
+                </div>
+                <div class="visualizer" id="chain-visualizer">
+                    <!-- Chain blocks will appear here -->
+                </div>
+            </div>
+
+            <!-- Encryption Panel -->
+            <div class="card encryption">
+                <h2>Encrypt Message</h2>
+                <div class="form-group">
+                    <label>Message</label>
+                    <input type="text" id="plaintext" placeholder="The eagle flies at midnight"
+                        value="The eagle flies at midnight">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Start Tick</label>
+                        <input type="number" id="t-start" value="10">
+                    </div>
+                    <div class="form-group">
+                        <label>End Tick</label>
+                        <input type="number" id="t-end" value="15">
+                    </div>
+                </div>
+                <button onclick="encrypt()">Encrypt</button>
+                <div class="output" id="encrypt-output"></div>
+            </div>
+
+            <!-- Decryption Panel -->
+            <div class="card decryption">
+                <h2>Decrypt Message</h2>
+                <div class="form-group">
+                    <label>Ciphertext (Hex)</label>
+                    <textarea id="ciphertext-input" rows="2" readonly></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Nonce (Hex)</label>
+                    <input type="text" id="nonce-input" readonly>
+                </div>
+                <div class="actions">
+                    <button class="secondary" onclick="computeChain()">1. Compute Chain</button>
+                    <button class="secondary" onclick="verifyAndDecrypt()">2. Verify & Decrypt</button>
+                </div>
+                <div class="output" id="decrypt-output"></div>
+            </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="card history" style="margin-top: 2rem;">
+            <h2>Encrypted History</h2>
+            <div id="history-list" class="history-list">
+                <p style="color: #666; font-style: italic;">No messages encrypted yet.</p>
+            </div>
+        </div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

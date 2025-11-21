@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  server:
+    build: .
+    ports:
+      - "5000:5000"
+    command: python -m src.app
+
+  client-demo:
+    build: .
+    depends_on:
+      - server
+    environment:
+      - BASE_URL=http://server:5000
+    # We override the default command to run the client demo
+    command: python -m src.client_demo
+
+  tests:
+    build: .
+    command: python -m unittest discover tests
