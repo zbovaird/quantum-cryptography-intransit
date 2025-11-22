@@ -4,7 +4,7 @@ from src.alice import alice_compute_public_history, alice_compute_checksum, alic
 import os
 
 def run_demo():
-    print("--- Starting Non-Markovian Ephemeral Decryption Demo ---")
+    print("--- Starting Time-Evolving Ephemeral Decryption Demo ---")
     
     # 1. Setup
     server = Server()

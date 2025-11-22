@@ -53,7 +53,7 @@ def hkdf(ikm: bytes, length: int, salt: bytes = None, info: bytes = None) -> byt
 
 def evolve_public_chain(x0: bytes, salt: bytes, steps: int) -> list[bytes]:
     """
-    Evolves the public non-Markovian hash chain.
+    Evolves the public Time-Evolving hash chain.
     
     X_{t+1} = H( X_t || X_{t-1} || salt_public || t )
     

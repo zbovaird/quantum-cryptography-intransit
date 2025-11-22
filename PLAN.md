@@ -1,4 +1,8 @@
-Non-Markovian Ephemeral Decryption Protocol – PLAN
+Time-Evolving Ephemeral Decryption Protocol – PLAN
+
+1. Overview
+This project implements a time-based encryption protocol where the server’s private key evolves forward in time and destroys its past states. This guarantees Perfect Forward Secrecy and mitigates “Harvest Now, Decrypt Later” attacks.
+
 0. High-Level Goal
 
 Build a proof-of-concept (PoC) for a new encryption model where:
@@ -7,7 +11,7 @@ Decryption requires live server cooperation.
 
 The server maintains a private, evolving state that never repeats and never rewinds.
 
-The client must perform sequential public work (non-Markovian hash chain) to prove “time” has passed.
+The client must perform sequential public work (Time-Evolving hash chain) to prove “time” has passed.
 
 Even if an attacker records all traffic and has a quantum computer, captured ciphertext cannot be decrypted later without intercepting an ephemeral private key piece in transit.
 
@@ -45,13 +49,13 @@ test_protocol.py
 You can start with src/core.py, src/server.py, src/alice.py, and src/demo.py, then add tests.
 
 2. Core Concepts to Implement
-2.1 Public Non-Markovian Process F
+2.1 Public Time-Evolving Process F
 
 Global public seed X0 (32 bytes)
 
 Public salt salt_public (32 bytes)
 
-Define a non-Markovian hash chain:
+Define a Time-Evolving hash chain:
 
 X_{t+1} = H( X_t || X_{t-1} || salt_public || t )
 

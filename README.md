@@ -1,4 +1,4 @@
-# Non-Markovian Ephemeral Decryption Protocol (PoC)
+# Time-Evolving Ephemeral Decryption Protocol (PoC)
 
 This is a research prototype (Proof of Concept) for a new encryption model.
 
