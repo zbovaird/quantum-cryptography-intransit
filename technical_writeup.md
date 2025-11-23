@@ -35,9 +35,18 @@ S_current -> ... -> S_{t_end}
 
 4. Security Properties & Use Cases
 
-Data at Rest Protection: While HNDL is often discussed in the context of "Data in Transit" (intercepting network traffic), this protocol primarily secures "Data at Rest." It allows ciphertext to be stored on a disk where it automatically becomes unreadable after the time window expires, even if the file itself is never deleted.
+4.1 Security Scenario: The Compromised Endpoint
+Consider an attacker who gains full access to a user's machine (or the server) at time T.
+*   **Standard Encryption:** The attacker finds 1,000 encrypted files from the past year and the private key. They decrypt *everything*. Total history compromise.
+*   **Ephemeral One-Shot:** The attacker finds 1,000 encrypted files. They try to decrypt them.
+    *   Files 1-999 (Past): The server has already advanced past their windows. The keys are gone. Decryption fails.
+    *   File 1,000 (Current): If it hasn't been decrypted yet, the attacker *can* decrypt this one file.
+    *   **Result:** The attacker gets *only* the current active file, not the entire history. The damage is contained to the "now".
 
-Time-Gated Access Control:
+4.2 Data at Rest Protection
+While HNDL is often discussed in the context of "Data in Transit" (intercepting network traffic), this protocol primarily secures "Data at Rest." It allows ciphertext to be stored on a disk where it automatically becomes unreadable after the time window expires, even if the file itself is never deleted.
+
+4.3 Time-Gated Access Control
 The protocol enables precise time-locking. A file can be encrypted to be accessible only within a specific future window (e.g., "Tick 100 to Tick 105"). Before Tick 100, the key does not yet exist. After Tick 105, the key is destroyed.
 
 5. Limitations
