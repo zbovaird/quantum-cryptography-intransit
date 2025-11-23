@@ -19,12 +19,12 @@ If you arrive late (e.g., an attacker trying to decrypt data 5 years from now), 
 
 3. Key Benefits
 ### Data in Transit Security (The Network Pipe)
-*   **Defeats "Harvest Now, Decrypt Later" (HNDL):** Even if an attacker records our encrypted traffic today and builds a quantum computer tomorrow, they cannot decrypt the data. The "key" required to unlock it no longer exists on our servers.
-*   **Forward Secrecy by Default:** Unlike standard TLS where a compromised private key can decrypt past traffic, our keys are destroyed seconds after use.
+*   Defeats "Harvest Now, Decrypt Later" (HNDL): Even if an attacker records our encrypted traffic today and builds a quantum computer tomorrow, they cannot decrypt the data. The "key" required to unlock it no longer exists on our servers.
+*   Forward Secrecy by Default: Unlike standard TLS where a compromised private key can decrypt past traffic, our keys are destroyed seconds after use.
 
 ### Data at Rest Security (The Storage)
-*   **Time-Gated Access:** We can lock files on disk so they are only accessible during specific future windows (e.g., "Readable only between 12:00 PM and 12:05 PM"). This provides granular temporal access control for sensitive documents.
-*   **Reduced Liability & Automatic Obsolescence:** Data stored on our servers (or on user devices) has a strictly enforced expiration date. **Even if a user forgets to delete a sensitive file, it becomes cryptographically useless after the time window expires.** We cannot be compelled to decrypt old data because the keys are physically destroyed.
+*   Time-Gated Access: We can lock files on disk so they are only accessible during specific future windows (e.g., "Readable only between 12:00 PM and 12:05 PM"). This provides granular temporal access control for sensitive documents.
+*   Reduced Liability & Automatic Obsolescence: Data stored on our servers (or on user devices) has a strictly enforced expiration date. Even if a user forgets to delete a sensitive file, it becomes cryptographically useless after the time window expires. We cannot be compelled to decrypt old data because the keys are physically destroyed.
 
 4. Operational Trade-offs & Limitations
 This high level of security comes with operational constraints that must be managed:
