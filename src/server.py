@@ -1,8 +1,11 @@
 import os
 import struct
+import hmac
 from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm
 
 class Server:
+    MAX_FUTURE_TICKS = 100
+
     def __init__(self, public_seed=None, public_salt=None, server_secret=None):
         self.public_seed = public_seed or os.urandom(32)
         self.public_salt = public_salt or os.urandom(32)
@@ -68,6 +71,9 @@ class Server:
         if self.current_t > t_end:
             raise ValueError(f"Server already passed t_end (current: {self.current_t}, target: {t_end}). Cannot encrypt.")
 
+        if t_end > self.current_t + self.MAX_FUTURE_TICKS:
+            raise ValueError(f"Time window too far in the future. Max allowed is +{self.MAX_FUTURE_TICKS} ticks.")
+
         # 1. Ensure public history
         self._ensure_public_history_up_to(t_end)
         
@@ -114,14 +120,17 @@ class Server:
         Verifies Alice's work and releases the private key piece.
         Advances the private state to t_end, making previous keys inaccessible.
         """
+        if t_end > self.current_t + self.MAX_FUTURE_TICKS:
+            raise ValueError(f"Time window too far in the future. Max allowed is +{self.MAX_FUTURE_TICKS} ticks.")
+
         self._ensure_public_history_up_to(t_end)
         expected_k_public = derive_public_key_piece(self.public_history, t_start, t_end)
         
-        if checksum != expected_k_public:
+        if not hmac.compare_digest(checksum, expected_k_public):
             raise ValueError("Invalid checksum")
 
         # 1.5 Check if window is already passed
-        if t_end < self.current_t:
+        if t_end <= self.current_t:
             raise ValueError(f"Window expired! Server is at t={self.current_t}, but you requested keys for t={t_end}. The keys are gone.")
             
         # 2. Advance private state to t_end

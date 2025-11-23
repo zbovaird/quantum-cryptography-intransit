@@ -30,6 +30,9 @@ def encrypt():
     if not all([plaintext_hex, t_start, t_end]):
         return jsonify({"error": "Missing parameters"}), 400
         
+    if not isinstance(t_start, int) or not isinstance(t_end, int):
+        return jsonify({"error": "t_start and t_end must be integers"}), 400
+        
     try:
         plaintext = binascii.unhexlify(plaintext_hex)
         result = server_instance.encrypt_for_alice(plaintext, t_start, t_end)
@@ -56,6 +59,9 @@ def verify():
     
     if not all([checksum_hex, t_start, t_end]):
         return jsonify({"error": "Missing parameters"}), 400
+
+    if not isinstance(t_start, int) or not isinstance(t_end, int):
+        return jsonify({"error": "t_start and t_end must be integers"}), 400
         
     try:
         checksum = binascii.unhexlify(checksum_hex)
