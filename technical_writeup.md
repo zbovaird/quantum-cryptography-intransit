@@ -33,13 +33,15 @@ S_current -> ... -> S_{t_end}
 4. Release: The server returns K_priv to the client.
 5. Irreversibility: The server overwrites its memory with S_{t_end}. All states S_0 ... S_{t_end}-1 are destroyed. Any ciphertext encrypted for a time t < t_end that has not yet been decrypted is now permanently undecryptable.
 
-4. Security Properties
+4. Security Properties & Use Cases
 
-Perfect Forward Secrecy: A compromise of the server at time T yields state S_T. An attacker cannot reverse the hash chain to derive S_t (where t < T), protecting all past messages.
-Post-Quantum Resistance: The security relies on the pre-image resistance of SHA-256, which is considered quantum-safe (Grover's algorithm only provides a quadratic speedup, mitigated by using 256-bit hashes).
-HNDL Mitigation: An attacker capturing traffic today cannot decrypt it in the future because the necessary key material (S_t) will have been overwritten by the server's normal operation.
+Data at Rest Protection: While HNDL is often discussed in the context of "Data in Transit" (intercepting network traffic), this protocol primarily secures "Data at Rest." It allows ciphertext to be stored on a disk where it automatically becomes unreadable after the time window expires, even if the file itself is never deleted.
+
+Time-Gated Access Control:
+The protocol enables precise time-locking. A file can be encrypted to be accessible only within a specific future window (e.g., "Tick 100 to Tick 105"). Before Tick 100, the key does not yet exist. After Tick 105, the key is destroyed.
 
 5. Limitations
+One-Shot Decryption: Decryption is a destructive event. To release the key for a specific window (e.g., Tick 100), the server must fast-forward its state to that tick. This action irreversibly burns all previous keys. Therefore, a message can be decrypted exactly once. If User A decrypts it, the server moves forward, and User B cannot decrypt it subsequently.
 Interactive Requirement: Decryption requires an online, active server.
 Strict Time Windows: If a legitimate client misses the decryption window (server advances past t_end), the data is lost.
 Serial Dependency: The server is a single point of state. Distributed implementations require synchronized state management (e.g., Raft consensus) to maintain the one-way property.

@@ -119,6 +119,10 @@ class Server:
         
         if checksum != expected_k_public:
             raise ValueError("Invalid checksum")
+
+        # 1.5 Check if window is already passed
+        if t_end < self.current_t:
+            raise ValueError(f"Window expired! Server is at t={self.current_t}, but you requested keys for t={t_end}. The keys are gone.")
             
         # 2. Advance private state to t_end
         # This is the "point of no return".

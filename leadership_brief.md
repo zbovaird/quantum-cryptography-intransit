@@ -19,11 +19,13 @@ If you arrive late (e.g., an attacker trying to decrypt data 5 years from now), 
 
 3. Key Benefits
 Defeats HNDL Attacks: Even if an attacker records our data today and builds a quantum computer tomorrow, they cannot decrypt the data. The "key" required to unlock it no longer exists on our servers or anywhere in the universe.
+Time-Gated Access: We can lock files so they are only accessible during specific future windows (e.g., "Readable only between 12:00 PM and 12:05 PM"). This provides granular temporal access control for sensitive documents.
 Quantum Resistant: The system uses standard, battle-tested algorithms (AES-256, SHA-256) that are immune to known quantum cracking methods. It avoids the complex math (factoring large numbers) that makes RSA vulnerable.
 Reduced Liability: Data at rest has a strictly enforced expiration date for decryptability. We cannot be compelled to decrypt old data because we physically cannot do so.
 
 4. Operational Trade-offs & Limitations
 This high level of security comes with operational constraints that must be managed:
+"One-Shot" Access: Decryption is destructive. Once a file is decrypted, the server consumes the key. It cannot be decrypted a second time by another user. This is a "read once" system.
 Use It or Lose It: If legitimate systems fail to decrypt data within the validity window (e.g., a system outage), the data becomes permanently unrecoverable. This requires robust uptime and redundancy.
 Active Server Dependency: Unlike a password that you can write down in a vault, this encryption requires an active "Time Server" to authorize decryption. If the server is destroyed, all data encrypted by it is lost.
 

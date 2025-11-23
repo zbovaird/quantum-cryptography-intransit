@@ -98,6 +98,8 @@ def client_helper():
         # 4. Decrypt
         k_final = alice_derive_final_key(keys["k_public"], keys["k_private"])
         decrypted = alice_decrypt(ciphertext, k_final, nonce)
+        print(f"DEBUG: Decrypted bytes: {decrypted}")
+        print(f"DEBUG: Decrypted string: {decrypted.decode()}")
         
         return jsonify({"plaintext": decrypted.decode()})
         

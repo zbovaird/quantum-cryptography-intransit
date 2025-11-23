@@ -1,6 +1,14 @@
 let currentEncryption = null;
 let encryptionHistory = [];
 
+function log(message, type = 'info') {
+    console.log(`[${type}] ${message}`);
+}
+
+function clearLog() {
+    document.getElementById('protocol-log').innerHTML = '<div class="log-entry system">Log cleared.</div>';
+}
+
 async function pollStatus() {
     try {
         const res = await fetch('/status');
@@ -41,6 +49,7 @@ async function encrypt() {
     const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
 
     try {
+        log(`Requesting encryption for window [${tStart}, ${tEnd}]...`, 'client');
         const res = await fetch('/encrypt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -53,6 +62,9 @@ async function encrypt() {
 
         const json = await res.json();
         if (json.error) throw new Error(json.error);
+
+        log(`Received ciphertext: ${json.ciphertext.substring(0, 16)}...`, 'server');
+        log(`Metadata: Public Seed=${json.public_seed.substring(0, 8)}..., Salt=${json.public_salt.substring(0, 8)}...`, 'info');
 
         // Add original plaintext for display purposes
         json.originalPlaintext = plaintext;
@@ -83,11 +95,11 @@ function renderHistory() {
         div.onclick = () => loadFromHistory(index);
         div.innerHTML = `
             <div class="msg">"${item.originalPlaintext}"</div>
-            <div class="meta">
-                <span>Window: [${item.t_start}, ${item.t_end}]</span>
-                <span>Tick: ${item.t_end}</span>
-            </div>
-        `;
+        <div class="meta">
+            <span>Window: [${item.t_start}, ${item.t_end}]</span>
+            <span>Tick: ${item.t_end}</span>
+        </div>
+`;
         list.appendChild(div);
     });
 }
@@ -99,24 +111,50 @@ function loadFromHistory(index) {
     document.getElementById('nonce-input').value = item.nonce;
     document.getElementById('decrypt-output').innerHTML = "";
 
+    // Reset chain state
+    chainComputed = false;
+    const btn = document.querySelector('button[onclick="verifyAndDecrypt()"]');
+    if (btn) {
+        btn.disabled = false; // We'll let them click it but show the alert, or disable it? 
+        // Let's disable it to be clearer, or just rely on the alert. 
+        // The previous code block adds the alert. Let's just reset the flag.
+        // Actually, let's reset the visual state too if we want to be fancy, but the alert is enough.
+    }
+
     // Highlight selected
     const items = document.querySelectorAll('.history-item');
     items.forEach(el => el.style.borderColor = '#333');
     if (items[index]) items[index].style.borderColor = '#00ff9d';
 }
 
+let chainComputed = false;
+
 async function computeChain() {
     if (!currentEncryption) return;
     document.getElementById('decrypt-output').innerText = "Simulating Alice computing chain... (Client-side logic handled by server in this demo)";
-    // In a real web app, we'd do WASM or JS crypto.
-    // Here we just acknowledge we have the seed.
+
+    log("Starting public chain computation...", "client");
+    log(`Evolving chain from t=0 to t=${currentEncryption.t_end}...`, "client");
+
+    const btn = document.querySelector('button[onclick="verifyAndDecrypt()"]');
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+
     setTimeout(() => {
-        document.getElementById('decrypt-output').innerText = "Chain computed. Ready to verify.";
-    }, 500);
+        document.getElementById('decrypt-output').innerText = "Chain computed. Checksum generated. Ready to verify.";
+        log(`Chain computed! Derived Checksum(Public Key Piece).`, "client");
+        chainComputed = true;
+        btn.disabled = false;
+        btn.style.opacity = "1";
+    }, 1000);
 }
 
 async function verifyAndDecrypt() {
     if (!currentEncryption) return;
+    if (!chainComputed) {
+        alert("You must compute the public hash chain first to generate the checksum!");
+        return;
+    }
 
     // In this web demo, we cheat slightly by asking the server to verify
     // using the checksum we would have computed.
@@ -135,20 +173,29 @@ async function verifyAndDecrypt() {
     // given the seed, just for the sake of the web UI demo.
 
     try {
+        log(`Sending Checksum to server for verification...`, "client");
         const res = await fetch('/client-helper', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(currentEncryption)
         });
         const data = await res.json();
+        console.log("DEBUG: Received data from server:", data);
 
         if (data.error) throw new Error(data.error);
+
+        log(`Server verified checksum!`, "server");
+        log(`Server advanced state to t=${currentEncryption.t_end} (BURN EVENT)`, "server");
+        log(`Received Private Key Piece.`, "client");
+        log(`Deriving Final Key = HKDF(Public Piece || Private Piece)...`, "client");
+        log(`Decrypting...Success!`, "client");
 
         // Now we have keys, let's decrypt (also helper or JS?)
         // Let's use the helper for decryption too to keep JS simple
         document.getElementById('decrypt-output').innerHTML = `<span class="success">Decrypted: ${data.plaintext}</span>`;
 
     } catch (e) {
+        log(`Decryption failed: ${e.message} `, "error");
         document.getElementById('decrypt-output').innerHTML = `<span class="error">Decryption Failed: ${e.message}</span>`;
     }
 }
