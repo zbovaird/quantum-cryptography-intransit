@@ -55,3 +55,15 @@ The PoC uses a global variable in a single Flask process. This fails with multip
 - [ ] **API Authentication**: Add JWT or mTLS middleware.
 - [ ] **Rate Limiting**: Prevent attackers from spamming "Decrypt" to force the server to tick forward too fast (Denial of Service via Time Acceleration).
 - [ ] **Audit Logging**: Log *who* requested a decryption, but never log the *keys* produced.
+## 7. Enterprise Integration (GPN Context)
+### Hardware Security Modules (HSM)
+For a financial institution, software-based key management is often insufficient.
+*   **Requirement**: The `server_secret` (used to derive the initial state) should never leave a FIPS 140-2 Level 3 HSM.
+*   **Implementation**: The Timekeeper application authenticates to the HSM to perform the HKDF operations. The state $S_t$ itself might need to live in the HSM's volatile memory if possible, or be encrypted by a key that never leaves the HSM.
+
+### SOAR Automation (The "Kill Switch")
+As a SOAR engineer, you can integrate this into your incident response playbooks.
+*   **Trigger**: SIEM detects a high-fidelity IOC (Indicator of Compromise) on a sensitive server.
+*   **Action**: SOAR platform sends a signed API request to the Timekeeper: `POST /advance-to-future`.
+*   **Result**: The Timekeeper instantly fast-forwards the state by 1 year.
+*   **Effect**: All data encrypted for the current window is immediately rendered undecryptable. The "safe" has moved on, and the attackers are locked out instantly. This is a **Cryptographic Remote Wipe**.
