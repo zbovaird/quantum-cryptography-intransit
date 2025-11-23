@@ -35,97 +35,89 @@ The system consists of two parallel "chains" of numbers that evolve over time.
 
 ---
 
-## 4. The Lifecycle of a Message
+## 4. Deep Dive: Public and Private Interaction
+This section details exactly which component performs which action, and when.
 
-### Phase 1: Encryption (The Promise)
-Scenario: It is Time 0. User "Alice" wants to encrypt a file so it can be read at Time 2.
+### 4.1 Encryption Mechanics
+Encryption is a client-side operation that uses a "Future Simulation" from the server.
 
-Step 1: Alice Computes the Public Key Part
-Alice looks at the Public Chain. She calculates what the public number will be at Time 2.
-*   Time 0 (X0): 5
-*   Time 1 (X1): 5 + 1 = 6
-*   Time 2 (X2): 6 + 1 = 7
-*   Result: The Public Key Part (K_pub) is 7.
+*   Who Encrypts: The Client (Alice).
+*   When: At the current time (Time T), targeting a future time (Time T+N).
+*   The Public Role: The Client computes the Public Key Part locally by hashing the Public Chain forward to T+N. This requires no server interaction.
+*   The Private Role: The Server simulates the future Private State for T+N. Crucially, the Server does NOT advance its internal clock to do this. It calculates what the state *will be*, sends that value to the Client, and then immediately forgets it.
+*   The Combination: The Client combines the Public Part and the Private Part to form the Final Key.
+*   The Result: The data is encrypted locally by the Client. The Server never sees the data, only the request for the key.
 
-Step 2: The Server Simulates the Private Key Part
-Alice asks the Server: "I need to lock this for Time 2. What will your secret be then?"
-The Server is currently at Time 0 (S0 = 3). It simulates the future:
-*   Future Time 1 (S1): 3 + 5 (Public X0) = 8
-*   Future Time 2 (S2): 8 + 6 (Public X1) = 4
-*   Result: The Server tells Alice the Private Key Part (K_priv) is 4.
+### 4.2 Decryption Mechanics
+Decryption is a coordinated dance between the Client and Server, triggered by the passage of time.
 
-Step 3: Alice Locks the Data
-Alice combines the parts to make the Final Key.
-*   K_final = K_pub (7) + K_priv (4) = 11
-Alice encrypts her file with Key 11. She saves the file secret.enc.
+*   Who Decrypts: The Client (Bob).
+*   When: Only after the Server's clock has reached Time T+N.
+*   The Public Role: The Client computes the Public Chain to T+N and sends it to the Server. This acts as a "Proof of Work" or "Proof of Time," ensuring the Client is synchronized.
+*   The Private Role: The Server verifies the Client's proof. If valid, the Server performs the "Burn": it advances its internal state to T+N, overwriting and destroying all previous states. It then releases the Private Key Part to the Client.
+*   The Combination: The Client combines the Server's Private Part with their locally computed Public Part to reconstruct the Final Key.
+
+### 4.3 Transaction Timing
+A critical distinction in this protocol is the decoupling of "Data" from "Keys."
+
+*   Data Transaction: The encrypted file (ciphertext) can be sent from Alice to Bob at any time—immediately, or 10 years later. It can be stored on a public USB drive or a cloud server. It is inert static noise.
+*   Key Transaction: The decryption key is NOT sent with the data. The key is only constructed at the moment of access.
+*   Implication: Decryption does not happen "in the same transaction" as the data transfer. You can download the encrypted file today (Time 1), but you cannot decrypt it until the Key Transaction occurs tomorrow (Time 2).
 
 ---
+
+## 5. Core Scenarios
+
+### Scenario A: Data at Rest (The Time-Locked Vault)
+This scenario addresses the liability of stored data (logs, backups, sensitive records).
+
+*   The Problem: You have a database of customer records from 2020. In 2025, hackers steal the database and the admin keys. They can read everything.
+*   The Solution:
+    1.  Alice (The System) encrypts the daily logs for a window of 90 days.
+    2.  The logs are stored on disk (Rest).
+    3.  Every day, the Server ticks forward and "burns" the key for the day 91 days ago.
+    4.  Result: If hackers steal the hard drive in 2025, they find encrypted files. When they try to get the keys for 2020, the Server is already at 2025. The keys for 2020 are mathematically gone. The data is useless.
+
+### Scenario B: Data in Transit (The Forward-Secure Pipe)
+This scenario addresses "Harvest Now, Decrypt Later" (HNDL) attacks on network traffic.
+
+*   The Problem: A nation-state records all your encrypted web traffic today. In 5 years, they use a Quantum Computer (or steal your private key) to decrypt it.
+*   The Solution:
+    1.  Alice and Bob establish a session. Alice encrypts her message for "Tick 100".
+    2.  She sends the message over the network (Transit). The nation-state records it.
+    3.  Bob receives it, asks the Server for the Tick 100 key, decrypts it, and reads it.
+    4.  Time passes. The Server moves to Tick 101. The key for Tick 100 is destroyed.
+    5.  Result: In 5 years, the nation-state has the recorded message. They go to the Server (or steal the Server). The Server is at Tick 1,000,000. The key for Tick 100 no longer exists. The recording is unreadable forever.
+
+---
+
+## 6. Step-by-Step Walkthrough (Toy Model)
+
+### Phase 1: Encryption (Alice Locks the Data)
+Scenario: It is Time 0. Alice wants to encrypt a file for Time 2.
+
+*   Step 1: Alice looks at the Public Chain (Start: 5). She computes 5 -> 6 -> 7. Public Part is 7.
+*   Step 2: Alice asks Server for the Time 2 secret. Server (at 3) simulates 3 -> 8 -> 4. Server sends 4.
+*   Step 3: Alice adds them: 7 + 4 = 11. She encrypts with Key 11.
 
 ### Phase 2: The Passage of Time (The Burn)
-Scenario: The clock ticks from Time 0 to Time 1.
+Scenario: Time moves from 0 to 1.
 
-Step 1: The Server Evolves
-The Server must move its internal state forward.
-*   Calculation: S1 = S0 (3) + X0 (5) = 8.
+*   Server State: Moves from 3 to 8.
+*   Destruction: The number 3 is deleted.
 
-Step 2: The Destruction
-This is the most critical step. The Server overwrites its memory.
-*   Old Memory: 3
-*   New Memory: 8
-*   Effect: The number 3 is deleted. It is gone forever. The Server can never go back to Time 0.
+### Phase 3: Decryption (Bob Unlocks)
+Scenario: It is Time 2. Bob wants to read.
 
----
+*   Step 1: Bob proves he knows the Public Chain is at 7.
+*   Step 2: Server (at 8) advances to 4.
+*   Step 3: Server destroys 8.
+*   Step 4: Server sends 4 to Bob.
+*   Step 5: Bob adds 7 + 4 = 11. Decrypts file.
 
-### Phase 3: Decryption (The Unlock)
-Scenario: It is now Time 1. User "Bob" wants to read the file. He needs to wait for Time 2. He triggers the Server to advance.
+### Phase 4: The Attack (Too Late)
+Scenario: It is Time 3. Hacker wants Key 11.
 
-Step 1: Bob Proves the Time
-Bob calculates the Public Chain up to Time 2 (X2 = 7) and shows it to the Server. "Look, I know what time it is."
-
-Step 2: The Server Advances (Time 1 -> Time 2)
-The Server is at S1 = 8. It calculates the next step.
-*   Calculation: S2 = S1 (8) + X1 (6) = 4.
-
-Step 3: The Second Burn
-The Server overwrites its memory again.
-*   Old Memory: 8
-*   New Memory: 4
-*   Effect: The number 8 is deleted.
-
-Step 4: Key Release
-The Server gives Bob the Private Key Part (K_priv): 4.
-
-Step 5: Bob Unlocks
-Bob combines it with his Public Part (K_pub = 7).
-*   K_final = 7 + 4 = 11.
-Bob uses Key 11 to decrypt the file. Success.
-
----
-
-### Phase 4: The Failed Attack (The Lockout)
-Scenario: It is now Time 3. A hacker steals the file secret.enc. They see it was locked for Time 2.
-
-Step 1: The Hacker Asks
-Hacker to Server: "Give me the key for Time 2."
-
-Step 2: The Server Checks
-*   Server Current State: Time 3 (S3).
-*   Requested State: Time 2 (S2).
-
-Step 3: The Mathematical Wall
-To give the hacker the key, the Server would need to know S2.
-*   The Server currently holds S3.
-*   S3 was created by adding numbers to S2.
-*   To get S2 back, the Server would need to subtract.
-*   The Trap: In our cryptographic system (One-Way Functions), subtraction does not exist. You can only add.
-
-Step 4: The Rejection
-The Server replies: "I cannot help you. I have moved forward. I have forgotten the number 4."
-
-Result:
-The key 11 cannot be reconstructed. The data inside secret.enc is lost forever.
-
----
-
-## 5. Conclusion
-By binding the encryption key to a transient moment in time, this protocol ensures that data has a strictly enforced lifespan. Once the time window expires, the "One-Way" nature of the server's evolution guarantees that no power on Earth—not the user, not the server admin, not a government—can recover the key.
+*   Server State: Has moved past 4.
+*   Constraint: Cannot subtract. Cannot go back.
+*   Result: Key 11 is lost forever.
