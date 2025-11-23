@@ -51,23 +51,61 @@ graph TD
     style X2 fill:#9cf,stroke:#333,stroke-width:2px
 ```
 
-### AI Image Prompts (for DALL-E 3 / Midjourney)
-Here are prompts to generate a visual storyboard of the process:
+### Sequence Diagrams
 
-**1. The Setup (Initialization)**
-> **Prompt:** "A glowing digital server monolith in a dark void, holding a single radiant red sphere of energy (the Secret State) in its core. A blue crystalline chain (Public Chain) begins to grow from the ground next to it. Cyberpunk aesthetic, cinematic lighting, 8k resolution."
+**1. Encryption Phase (Alice Locks the Data)**
+Alice wants to encrypt a file for Tick 100.
+```mermaid
+sequenceDiagram
+    participant Alice
+    participant Server
+    
+    Note over Alice: Has File F
+    Alice->>Server: Request Encryption (t_start=90, t_end=100)
+    Server->>Server: Compute K_pub (from Public Chain)
+    Server->>Server: Simulate K_priv (Future State S_100)
+    Server->>Alice: Return Nonce, Ciphertext (encrypted with K_final)
+    Note over Alice: Saves Encrypted File (F.enc)
+```
 
-**2. The Promise (Encryption)**
-> **Prompt:** "A futuristic holographic interface showing a user 'Alice' sealing a document inside a transparent digital vault. The vault has a timer counting down. A ghostly, translucent key floats inside the vault, representing the future key that does not exist yet. Blue and neon purple color palette."
+**2. Decryption Phase (Bob Unlocks the Data)**
+It is now Tick 100. Bob wants to open the file.
+```mermaid
+sequenceDiagram
+    participant Bob
+    participant Server
+    
+    Note over Bob: Has F.enc (Metadata: t_end=100)
+    Bob->>Bob: Compute Public Chain X_0...X_100
+    Bob->>Server: Verify Request (Checksum of Chain)
+    
+    Note over Server: Current Tick = 99
+    Server->>Server: Verify Checksum (Proof of Time)
+    Server->>Server: ADVANCE STATE: S_99 -> S_100
+    Note right of Server: S_99 is DESTROYED
+    
+    Server->>Bob: Return K_priv (S_100)
+    Bob->>Bob: Derive K_final (K_pub + K_priv)
+    Bob->>Bob: Decrypt F.enc -> F
+```
 
-**3. The Burn (Time Advances)**
-> **Prompt:** "Close up of the server monolith. It has generated a new, brighter red sphere of energy. The previous red sphere is crumbling into ash and dissolving into digital dust, symbolizing the destruction of the past key. High contrast, dramatic lighting, particles fading away."
-
-**4. The Unlock (Decryption)**
-> **Prompt:** "A user 'Bob' standing before the digital vault. The timer has reached zero. The server monolith shoots a beam of red light into the vault, solidifying the ghostly key into a solid golden key. The vault opens, revealing the glowing document inside. Triumphant atmosphere."
-
-**5. The Lockout (Attacker Fails)**
-> **Prompt:** "A shadowy hacker figure trying to open an old, rusted digital vault. The vault is dark and inert. The server monolith in the background has moved far away and turned its back. The hacker holds a handful of ash (the destroyed key), looking frustrated. Dark, moody, glitch art style."
+**3. Failed Decryption (Attacker is Too Late)**
+It is now Tick 101. An attacker tries to open the file.
+```mermaid
+sequenceDiagram
+    participant Attacker
+    participant Server
+    
+    Note over Attacker: Has F.enc (Metadata: t_end=100)
+    Attacker->>Server: Verify Request (Checksum for t=100)
+    
+    Note over Server: Current Tick = 101
+    Server->>Server: Check t_end (100) vs Current (101)
+    Note right of Server: 100 < 101. Window Expired.
+    
+    Server-->>Attacker: ERROR: Keys Gone Forever
+    Note over Attacker: F.enc is useless
+```
 
 ---
 
