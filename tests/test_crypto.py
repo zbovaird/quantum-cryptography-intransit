@@ -57,7 +57,7 @@ class TestTimeEvolvingCrypto(unittest.TestCase):
         
         # 4. Verify server state has changed
         self.assertNotEqual(self.server.private_state, initial_state)
-        self.assertEqual(self.server.current_t, 10) # It advances TO the target. 
+        self.assertEqual(self.server.current_t, 11) # It advances PAST the target (One-Shot Burn). 
         # Let's check implementation: advance_private_state_to(t_end) sets current_t to t_end.
         # Wait, looking at server.py:
         # while self.current_t < target_t: ... self.current_t += 1

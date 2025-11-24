@@ -147,16 +147,21 @@ class Server:
             raise ValueError("Invalid checksum")
 
         # 1.5 Check if window is already passed
-        if t_end <= self.current_t:
+        # We allow t_end == self.current_t (the "Now"), but reject if current_t > t_end (the "Past").
+        if t_end < self.current_t:
             raise ValueError(f"Window expired! Server is at t={self.current_t}, but you requested keys for t={t_end}. The keys are gone.")
             
         # 2. Advance private state to t_end
-        # This is the "point of no return".
         self.advance_private_state_to(t_end)
         
-        # 3. Return keys
+        # 3. Capture the key for t_end
         # K_private = H(S_{t_end})
         k_private = sha256(self.private_state)
+        
+        # 4. THE BURN: Advance to t_end + 1
+        # This enforces "One-Shot". Once we give you the key for t_end, 
+        # we immediately move to t_end + 1 so nobody else can get it.
+        self.advance_private_state_to(t_end + 1)
         
         return {
             "k_public": expected_k_public,
