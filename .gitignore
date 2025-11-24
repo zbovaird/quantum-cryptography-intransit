@@ -4,3 +4,15 @@ __pycache__/
 .venv
 env/
 venv/
+
+# Database
+server_state.db
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
+
+# Logs and test outputs
+*.log
+test_output*.txt

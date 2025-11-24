@@ -48,6 +48,23 @@ class Server:
         if self.current_t > 0:
             self._ensure_public_history_up_to(self.current_t)
 
+    def refresh_state(self):
+        """Reloads the current state from the database."""
+        state = self._load_state()
+        if state:
+            # Check if seed or salt changed (e.g. if Ticker reset the DB or won a race)
+            if state['public_seed'] != self.public_seed or state['public_salt'] != self.public_salt:
+                print("DEBUG: Public seed/salt changed in DB. Resetting local history.")
+                self.public_seed = state['public_seed']
+                self.public_salt = state['public_salt']
+                self.public_history = [self.public_seed] # Reset history
+
+            self.server_secret = state['server_secret']
+            self.private_state = state['private_state']
+            self.current_t = state['current_t']
+            # Also ensure history is up to date with the new time
+            self._ensure_public_history_up_to(self.current_t)
+
     def _encrypt_blob(self, data: bytes) -> bytes:
         """Encrypts a blob using the master key."""
         nonce, ciphertext = encrypt_aes_gcm(self.master_key, data)
@@ -116,7 +133,6 @@ class Server:
         # Here, we want to compute X_{current_len}, X_{current_len+1}, ..., X_t.
         # The step index for computing X_{k+1} is k.
         # So to compute X_{current_len}, we use step index k = current_len - 1.
-        
         for k in range(current_len - 1, t):
             # k is the step index.
             # We are computing X_{k+1}.
