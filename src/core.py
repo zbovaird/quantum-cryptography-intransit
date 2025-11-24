@@ -7,6 +7,11 @@ def sha256(data: bytes) -> bytes:
     """Computes SHA-256 hash of the input data."""
     return hashlib.sha256(data).digest()
 
+def xor_bytes(a: bytes, b: bytes) -> bytes:
+    if len(a) != len(b):
+        raise ValueError("Byte strings must be of equal length")
+    return bytes(x ^ y for x, y in zip(a, b))
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 def encrypt_aes_gcm(key: bytes, plaintext: bytes, associated_data: bytes = None) -> tuple[bytes, bytes]:

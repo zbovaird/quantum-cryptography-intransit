@@ -151,6 +151,9 @@ class Server:
         if t_end < self.current_t:
             raise ValueError(f"Window expired! Server is at t={self.current_t}, but you requested keys for t={t_end}. The keys are gone.")
             
+        if t_end > self.current_t:
+            raise ValueError(f"Too early! Server is at t={self.current_t}, but you requested keys for t={t_end}. Please wait.")
+
         # 2. Advance private state to t_end
         self.advance_private_state_to(t_end)
         

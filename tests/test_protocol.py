@@ -12,6 +12,7 @@ class TestProtocol(unittest.TestCase):
         # Encrypt
         result = server.encrypt_for_alice(plaintext, t_start, t_end)
         ciphertext = result["ciphertext"]
+        nonce = result["nonce"]
         pub_seed = result["public_seed"]
         pub_salt = result["public_salt"]
         
@@ -25,8 +26,8 @@ class TestProtocol(unittest.TestCase):
         k_priv = keys["k_private"]
         
         # Decrypt
-        k_final = alice_derive_final_key(k_pub, k_priv, len(ciphertext))
-        decrypted = alice_decrypt(ciphertext, k_final)
+        k_final = alice_derive_final_key(k_pub, k_priv, 32)
+        decrypted = alice_decrypt(ciphertext, k_final, nonce)
         
         self.assertEqual(decrypted, plaintext)
         
@@ -46,8 +47,9 @@ class TestProtocol(unittest.TestCase):
         keys1 = server.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
         
         # Second release (same window, server hasn't moved past)
-        keys2 = server.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
-        self.assertEqual(keys1["k_private"], keys2["k_private"])
+        # The server enforces one-shot, so this should fail immediately
+        with self.assertRaises(ValueError):
+            server.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
         
         # Move server forward
         t_start_new = 6
@@ -58,9 +60,9 @@ class TestProtocol(unittest.TestCase):
         server.verify_checksum_and_release_private_key_piece(checksum_new, t_start_new, t_end_new)
         
         # Ask for old window
-        # Server returns H(S_current) which is H(S_10), not H(S_5)
-        keys3 = server.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
-        self.assertNotEqual(keys3["k_private"], keys1["k_private"])
+        # Server should reject this request as the window has expired
+        with self.assertRaises(ValueError):
+            server.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
 
 if __name__ == "__main__":
     unittest.main()

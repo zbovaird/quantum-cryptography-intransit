@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, render_template
 from src.server import Server
 import binascii
+import threading
+import time
 
 app = Flask(__name__)
 
@@ -8,6 +10,21 @@ app = Flask(__name__)
 # In a real app, we'd need persistent storage or a singleton that doesn't reset on reload.
 # For this PoC, a global variable is fine as long as we don't use multiple workers.
 server_instance = Server()
+
+def run_ticker():
+    """Background thread to tick the server clock."""
+    while True:
+        time.sleep(1)
+        try:
+            # Advance the server state by 1 tick
+            target = server_instance.current_t + 1
+            server_instance.advance_private_state_to(target)
+        except Exception as e:
+            print(f"Ticker error: {e}")
+
+# Start ticker thread
+ticker_thread = threading.Thread(target=run_ticker, daemon=True)
+ticker_thread.start()
 
 @app.route('/', methods=['GET'])
 def index():
