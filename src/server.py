@@ -44,6 +44,13 @@ class Server:
         
         # Cache public history. Start with X_0.
         self.public_history = [self.public_seed]
+        
+        # Replay Protection: Nonce tracking
+        # Ideally, use Redis or a DB table for persistence. For PoC, in-memory set with timestamps.
+        self.seen_nonces = set()
+        self.nonce_timestamps = {} # nonce -> timestamp
+        self.NONCE_TTL = 300 # 5 minutes
+
         # Re-evolve history if we loaded from DB
         if self.current_t > 0:
             self._ensure_public_history_up_to(self.current_t)
@@ -64,6 +71,23 @@ class Server:
             self.current_t = state['current_t']
             # Also ensure history is up to date with the new time
             self._ensure_public_history_up_to(self.current_t)
+            
+    def _check_nonce(self, nonce: str):
+        """Checks if nonce has been seen. Raises ValueError if replay detected."""
+        import time
+        now = time.time()
+        
+        # Cleanup old nonces
+        to_remove = [n for n, ts in self.nonce_timestamps.items() if now - ts > self.NONCE_TTL]
+        for n in to_remove:
+            del self.nonce_timestamps[n]
+            self.seen_nonces.remove(n)
+            
+        if nonce in self.seen_nonces:
+            raise ValueError(f"Replay detected! Nonce {nonce} already used.")
+            
+        self.seen_nonces.add(nonce)
+        self.nonce_timestamps[nonce] = now
 
     def _encrypt_blob(self, data: bytes) -> bytes:
         """Encrypts a blob using the master key."""
@@ -179,11 +203,14 @@ class Server:
         # Persist the new state
         self._save_state()
 
-    def encrypt_for_alice(self, plaintext: bytes, t_start: int, t_end: int):
+    def encrypt_for_alice(self, plaintext: bytes, t_start: int, t_end: int, request_nonce: str):
         """
         Encrypts a message for a specific time window.
         Does NOT advance the persistent private state.
+        Requires a unique request_nonce to prevent replay.
         """
+        self._check_nonce(request_nonce)
+        
         if self.current_t > t_end:
             raise ValueError(f"Server already passed t_end (current: {self.current_t}, target: {t_end}). Cannot encrypt.")
 
@@ -234,14 +261,18 @@ class Server:
             "t_start": t_start,
             "t_end": t_end,
             "public_seed": self.public_seed,
-            "public_salt": self.public_salt
+            "public_salt": self.public_salt,
+            "request_nonce": request_nonce # Echo back the nonce
         }
 
-    def verify_checksum_and_release_private_key_piece(self, checksum: bytes, t_start: int, t_end: int):
+    def verify_checksum_and_release_private_key_piece(self, checksum: bytes, t_start: int, t_end: int, request_nonce: str):
         """
         Verifies Alice's work and releases the private key piece.
         Advances the private state to t_end, making previous keys inaccessible.
+        Requires a unique request_nonce to prevent replay.
         """
+        self._check_nonce(request_nonce)
+
         if t_end > self.current_t + self.MAX_FUTURE_TICKS:
             raise ValueError(f"Time window too far in the future. Max allowed is +{self.MAX_FUTURE_TICKS} ticks.")
 
@@ -273,5 +304,6 @@ class Server:
         
         return {
             "k_public": expected_k_public,
-            "k_private": k_private
+            "k_private": k_private,
+            "request_nonce": request_nonce # Echo back
         }

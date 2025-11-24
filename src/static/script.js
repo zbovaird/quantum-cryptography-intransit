@@ -71,15 +71,20 @@ async function encrypt() {
     const data = encoder.encode(plaintext);
     const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
 
+    // Generate random nonce
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
     try {
-        log(`Requesting encryption for window [${tStart}, ${tEnd}]...`, 'client');
+        log(`Requesting encryption for window [${tStart}, ${tEnd}] with nonce ${nonce}...`, 'client');
         const res = await fetch('/encrypt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 plaintext: hex,
                 t_start: tStart,
-                t_end: tEnd
+                t_end: tEnd,
+                request_nonce: nonce
             })
         });
 
@@ -229,7 +234,7 @@ function waitAndDecrypt() {
         alert("No active encryption to decrypt!");
         return;
     }
-    
+
     if (!chainComputed) {
         // Auto-compute chain if not done
         computeChain();
@@ -237,7 +242,7 @@ function waitAndDecrypt() {
 
     const targetT = currentEncryption.t_end;
     const btn = document.querySelector('button[onclick="waitAndDecrypt()"]');
-    
+
     if (waitInterval) clearInterval(waitInterval);
 
     btn.disabled = true;
@@ -247,7 +252,7 @@ function waitAndDecrypt() {
 
     waitInterval = setInterval(() => {
         const timeLeft = targetT - serverCurrentT;
-        
+
         if (timeLeft > 0) {
             document.getElementById('decrypt-output').innerHTML = `<span style="color: orange">Waiting for time lock... ${timeLeft}s remaining</span>`;
             btn.innerText = `Waiting (${timeLeft}s)...`;

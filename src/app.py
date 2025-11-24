@@ -36,9 +36,13 @@ def encrypt():
     if not isinstance(t_start, int) or not isinstance(t_end, int):
         return jsonify({"error": "t_start and t_end must be integers"}), 400
         
+    request_nonce = data.get('request_nonce')
+    if not request_nonce:
+        return jsonify({"error": "Missing request_nonce"}), 400
+
     try:
         plaintext = binascii.unhexlify(plaintext_hex)
-        result = server_instance.encrypt_for_alice(plaintext, t_start, t_end)
+        result = server_instance.encrypt_for_alice(plaintext, t_start, t_end, request_nonce)
         
         # Convert bytes to hex for JSON response
         response = {
@@ -67,9 +71,13 @@ def verify():
     if not isinstance(t_start, int) or not isinstance(t_end, int):
         return jsonify({"error": "t_start and t_end must be integers"}), 400
         
+    request_nonce = data.get('request_nonce')
+    if not request_nonce:
+        return jsonify({"error": "Missing request_nonce"}), 400
+
     try:
         checksum = binascii.unhexlify(checksum_hex)
-        keys = server_instance.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
+        keys = server_instance.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end, request_nonce)
         
         response = {
             "k_public": keys["k_public"].hex(),
@@ -104,7 +112,11 @@ def client_helper():
         checksum = alice_compute_checksum(history, t_start, t_end)
         
         # 3. Verify with Server
-        keys = server_instance.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end)
+        # Client helper needs to generate a NEW nonce for the verification step, 
+        # because the encryption nonce was already used!
+        import os
+        verify_nonce = os.urandom(8).hex()
+        keys = server_instance.verify_checksum_and_release_private_key_piece(checksum, t_start, t_end, verify_nonce)
         
         # 4. Decrypt
         k_final = alice_derive_final_key(keys["k_public"], keys["k_private"])
