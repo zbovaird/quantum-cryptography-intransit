@@ -167,8 +167,9 @@ class Server:
             x_t = self.public_history[t]
             t_bytes = struct.pack(">Q", t)
             
-            data = self.private_state + x_t + self.server_secret + t_bytes
-            self.private_state = sha256(data)
+            # Domain Separation: EVOLVE context
+            msg = b"EVOLVE" + x_t + self.server_secret + t_bytes
+            self.private_state = hmac.new(self.private_state, msg, "sha256").digest()
             
             # RATCHET THE SERVER SECRET
             self.server_secret = self._ratchet_secret(self.server_secret)
@@ -208,8 +209,8 @@ class Server:
         while temp_t < t_end:
             x_t = self.public_history[temp_t]
             t_bytes = struct.pack(">Q", temp_t)
-            data = temp_state + x_t + temp_secret + t_bytes
-            temp_state = sha256(data)
+            msg = b"EVOLVE" + x_t + temp_secret + t_bytes
+            temp_state = hmac.new(temp_state, msg, "sha256").digest()
             
             # Simulate Ratchet
             temp_secret = self._ratchet_secret(temp_secret)
@@ -217,7 +218,8 @@ class Server:
             temp_t += 1
             
         # Now temp_state is S_{t_end}.
-        k_private = sha256(temp_state)
+        # Domain Separation: RELEASE context
+        k_private = hmac.new(temp_state, b"RELEASE", "sha256").digest()
         
         # 4. Derive K_final
         # K_final = HKDF(K_public || K_private, length=32) for AES-GCM
@@ -261,8 +263,8 @@ class Server:
         self.advance_private_state_to(t_end)
         
         # 3. Capture the key for t_end
-        # K_private = H(S_{t_end})
-        k_private = sha256(self.private_state)
+        # Domain Separation: RELEASE context
+        k_private = hmac.new(self.private_state, b"RELEASE", "sha256").digest()
         
         # 4. THE BURN: Advance to t_end + 1
         # This enforces "One-Shot". Once we give you the key for t_end, 

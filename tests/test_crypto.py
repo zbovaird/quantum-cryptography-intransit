@@ -6,10 +6,18 @@ from src.alice import alice_derive_final_key, alice_decrypt
 
 class TestTimeEvolvingCrypto(unittest.TestCase):
     def setUp(self):
+        # Clean up any existing DB to ensure fresh state
+        if os.path.exists("server_state.db"):
+            os.remove("server_state.db")
+            
         self.server = Server()
         self.plaintext = b"Secret Message"
         self.t_start = 10
         self.t_end = 15
+
+    def tearDown(self):
+        if os.path.exists("server_state.db"):
+            os.remove("server_state.db")
 
     def test_core_determinism(self):
         """Verify that hash chain evolution is deterministic."""
@@ -25,16 +33,16 @@ class TestTimeEvolvingCrypto(unittest.TestCase):
         enc_data = self.server.encrypt_for_alice(self.plaintext, self.t_start, self.t_end)
         
         # 2. Alice computes checksum (simulated)
-        # We need to ensure server has history up to t_end for the test to work 
-        # (encrypt_for_alice does this, but let's be explicit about what Alice does)
-        # Alice would compute chain herself.
         alice_chain = evolve_public_chain(enc_data['public_seed'], enc_data['public_salt'], self.t_end)
         checksum = derive_public_key_piece(alice_chain, self.t_start, self.t_end)
         
-        # 3. Verify and Release
+        # 3. Advance Server to t_end (Required by new "Too early" check)
+        self.server.advance_private_state_to(self.t_end)
+        
+        # 4. Verify and Release
         keys = self.server.verify_checksum_and_release_private_key_piece(checksum, self.t_start, self.t_end)
         
-        # 4. Decrypt
+        # 5. Decrypt
         k_final = alice_derive_final_key(keys['k_public'], keys['k_private'])
         decrypted = alice_decrypt(enc_data['ciphertext'], k_final, enc_data['nonce'])
         
@@ -52,6 +60,9 @@ class TestTimeEvolvingCrypto(unittest.TestCase):
         # We need the checksum first
         alice_chain = evolve_public_chain(enc_data['public_seed'], enc_data['public_salt'], 10)
         checksum = derive_public_key_piece(alice_chain, 10, 10)
+        
+        # Advance to t=10
+        self.server.advance_private_state_to(10)
         
         self.server.verify_checksum_and_release_private_key_piece(checksum, 10, 10)
         
