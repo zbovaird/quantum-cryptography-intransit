@@ -1,5 +1,6 @@
 let currentEncryption = null;
 let encryptionHistory = [];
+let serverCurrentT = 0;
 
 function log(message, type = 'info') {
     console.log(`[${type}] ${message}`);
@@ -14,8 +15,22 @@ async function pollStatus() {
         const res = await fetch('/status');
         const data = await res.json();
 
+        serverCurrentT = data.current_t;
         document.getElementById('server-t').innerText = data.current_t;
         document.getElementById('chain-len').innerText = data.public_history_len;
+
+        // Auto-sync logic
+        const autoStart = document.getElementById('auto-sync-start');
+        if (autoStart && autoStart.checked) {
+            document.getElementById('t-start').value = serverCurrentT;
+        }
+
+        const autoEnd = document.getElementById('auto-sync-end');
+        if (autoEnd && autoEnd.checked) {
+            // Only update if the current value is less than target or if we want to keep a constant window
+            // Actually, let's just keep it at T + 30
+            document.getElementById('t-end').value = serverCurrentT + 30;
+        }
 
         updateVisualizer(data.current_t, data.public_history_len);
     } catch (e) {
@@ -193,11 +208,59 @@ async function verifyAndDecrypt() {
         // Now we have keys, let's decrypt (also helper or JS?)
         // Let's use the helper for decryption too to keep JS simple
         document.getElementById('decrypt-output').innerHTML = `<span class="success">Decrypted: ${data.plaintext}</span>`;
-
     } catch (e) {
         log(`Decryption failed: ${e.message} `, "error");
         document.getElementById('decrypt-output').innerHTML = `<span class="error">Decryption Failed: ${e.message}</span>`;
     }
+}
+
+let waitInterval = null;
+
+function waitAndDecrypt() {
+    if (!currentEncryption) {
+        alert("No active encryption to decrypt!");
+        return;
+    }
+    
+    if (!chainComputed) {
+        // Auto-compute chain if not done
+        computeChain();
+    }
+
+    const targetT = currentEncryption.t_end;
+    const btn = document.querySelector('button[onclick="waitAndDecrypt()"]');
+    
+    if (waitInterval) clearInterval(waitInterval);
+
+    btn.disabled = true;
+    btn.innerText = "Waiting...";
+
+    log(`Auto-Decrypt: Waiting for t=${targetT}...`, "info");
+
+    waitInterval = setInterval(() => {
+        const timeLeft = targetT - serverCurrentT;
+        
+        if (timeLeft > 0) {
+            document.getElementById('decrypt-output').innerHTML = `<span style="color: orange">Waiting for time lock... ${timeLeft}s remaining</span>`;
+            btn.innerText = `Waiting (${timeLeft}s)...`;
+        } else if (timeLeft === 0) {
+            // It's time!
+            clearInterval(waitInterval);
+            waitInterval = null;
+            btn.innerText = "Attempting Decrypt...";
+            verifyAndDecrypt();
+            btn.disabled = false;
+            btn.innerText = "3. Wait & Decrypt (Auto)";
+        } else {
+            // Missed it? Or server jumped ahead? Try anyway if it's close, but server rejects late.
+            // If we are late, just try.
+            clearInterval(waitInterval);
+            waitInterval = null;
+            verifyAndDecrypt();
+            btn.disabled = false;
+            btn.innerText = "3. Wait & Decrypt (Auto)";
+        }
+    }, 500); // Check twice a second to be sure
 }
 
 async function resetServer() {
