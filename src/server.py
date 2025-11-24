@@ -1,21 +1,122 @@
 import os
 import struct
 import hmac
-from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm
+import sqlite3
+from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm, decrypt_aes_gcm
+
+DB_PATH = "server_state.db"
 
 class Server:
     MAX_FUTURE_TICKS = 100
 
     def __init__(self, public_seed=None, public_salt=None, server_secret=None):
-        self.public_seed = public_seed or os.urandom(32)
-        self.public_salt = public_salt or os.urandom(32)
-        self.server_secret = server_secret or os.urandom(32)
+        self._init_db()
         
-        self.private_state = os.urandom(32) # S_0
-        self.current_t = 0
+        # Get Master Key for DB encryption
+        self.master_key = os.environ.get('SERVER_MASTER_KEY')
+        if not self.master_key:
+            print("WARNING: SERVER_MASTER_KEY not set. Using insecure default for demo.")
+            self.master_key = b"insecure_default_master_key_32b"
+        else:
+            # Ensure it's bytes
+            if isinstance(self.master_key, str):
+                self.master_key = self.master_key.encode()
+        
+        # Ensure key is exactly 32 bytes for AES-256
+        self.master_key = sha256(self.master_key)
+
+        state = self._load_state()
+        if state:
+            print("Loading persisted server state...")
+            self.public_seed = state['public_seed']
+            self.public_salt = state['public_salt']
+            self.server_secret = state['server_secret']
+            self.private_state = state['private_state']
+            self.current_t = state['current_t']
+        else:
+            print("Initializing new server state...")
+            self.public_seed = public_seed or os.urandom(32)
+            self.public_salt = public_salt or os.urandom(32)
+            self.server_secret = server_secret or os.urandom(32)
+            self.private_state = os.urandom(32) # S_0
+            self.current_t = 0
+            self._save_state()
         
         # Cache public history. Start with X_0.
         self.public_history = [self.public_seed]
+        # Re-evolve history if we loaded from DB
+        if self.current_t > 0:
+            self._ensure_public_history_up_to(self.current_t)
+
+    def refresh_state(self):
+        """Reloads the current state from the database."""
+        state = self._load_state()
+        if state:
+            # Check if seed or salt changed (e.g. if Ticker reset the DB or won a race)
+            if state['public_seed'] != self.public_seed or state['public_salt'] != self.public_salt:
+                print("DEBUG: Public seed/salt changed in DB. Resetting local history.")
+                self.public_seed = state['public_seed']
+                self.public_salt = state['public_salt']
+                self.public_history = [self.public_seed] # Reset history
+
+            self.server_secret = state['server_secret']
+            self.private_state = state['private_state']
+            self.current_t = state['current_t']
+            # Also ensure history is up to date with the new time
+            self._ensure_public_history_up_to(self.current_t)
+
+    def _encrypt_blob(self, data: bytes) -> bytes:
+        """Encrypts a blob using the master key."""
+        nonce, ciphertext = encrypt_aes_gcm(self.master_key, data)
+        return nonce + ciphertext
+
+    def _decrypt_blob(self, blob: bytes) -> bytes:
+        """Decrypts a blob using the master key."""
+        nonce = blob[:12]
+        ciphertext = blob[12:]
+        return decrypt_aes_gcm(self.master_key, nonce, ciphertext)
+
+    def _init_db(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS server_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    public_seed BLOB NOT NULL,
+                    public_salt BLOB NOT NULL,
+                    server_secret BLOB NOT NULL,
+                    private_state BLOB NOT NULL,
+                    current_t INTEGER NOT NULL
+                )
+            """)
+
+    def _load_state(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.execute("SELECT public_seed, public_salt, server_secret, private_state, current_t FROM server_state WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                try:
+                    return {
+                        'public_seed': row[0],
+                        'public_salt': row[1],
+                        'server_secret': self._decrypt_blob(row[2]),
+                        'private_state': self._decrypt_blob(row[3]),
+                        'current_t': row[4]
+                    }
+                except Exception as e:
+                    print(f"CRITICAL: Failed to decrypt server state. Master key mismatch? Error: {e}")
+                    return None
+            return None
+
+    def _save_state(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            # Encrypt sensitive fields
+            enc_secret = self._encrypt_blob(self.server_secret)
+            enc_private = self._encrypt_blob(self.private_state)
+            
+            conn.execute("""
+                INSERT OR REPLACE INTO server_state (id, public_seed, public_salt, server_secret, private_state, current_t)
+                VALUES (1, ?, ?, ?, ?, ?)
+            """, (self.public_seed, self.public_salt, enc_secret, enc_private, self.current_t))
 
     def _ensure_public_history_up_to(self, t):
         """Ensures public_history contains X_0 ... X_t."""
@@ -32,7 +133,6 @@ class Server:
         # Here, we want to compute X_{current_len}, X_{current_len+1}, ..., X_t.
         # The step index for computing X_{k+1} is k.
         # So to compute X_{current_len}, we use step index k = current_len - 1.
-        
         for k in range(current_len - 1, t):
             # k is the step index.
             # We are computing X_{k+1}.
@@ -74,6 +174,9 @@ class Server:
             self.server_secret = self._ratchet_secret(self.server_secret)
             
             self.current_t += 1
+            
+        # Persist the new state
+        self._save_state()
 
     def encrypt_for_alice(self, plaintext: bytes, t_start: int, t_end: int):
         """
