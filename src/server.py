@@ -2,7 +2,7 @@ import os
 import struct
 import hmac
 import sqlite3
-from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm
+from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm, decrypt_aes_gcm
 
 DB_PATH = "server_state.db"
 
@@ -12,6 +12,19 @@ class Server:
     def __init__(self, public_seed=None, public_salt=None, server_secret=None):
         self._init_db()
         
+        # Get Master Key for DB encryption
+        self.master_key = os.environ.get('SERVER_MASTER_KEY')
+        if not self.master_key:
+            print("WARNING: SERVER_MASTER_KEY not set. Using insecure default for demo.")
+            self.master_key = b"insecure_default_master_key_32b"
+        else:
+            # Ensure it's bytes
+            if isinstance(self.master_key, str):
+                self.master_key = self.master_key.encode()
+        
+        # Ensure key is exactly 32 bytes for AES-256
+        self.master_key = sha256(self.master_key)
+
         state = self._load_state()
         if state:
             print("Loading persisted server state...")
@@ -35,6 +48,17 @@ class Server:
         if self.current_t > 0:
             self._ensure_public_history_up_to(self.current_t)
 
+    def _encrypt_blob(self, data: bytes) -> bytes:
+        """Encrypts a blob using the master key."""
+        nonce, ciphertext = encrypt_aes_gcm(self.master_key, data)
+        return nonce + ciphertext
+
+    def _decrypt_blob(self, blob: bytes) -> bytes:
+        """Decrypts a blob using the master key."""
+        nonce = blob[:12]
+        ciphertext = blob[12:]
+        return decrypt_aes_gcm(self.master_key, nonce, ciphertext)
+
     def _init_db(self):
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("""
@@ -53,21 +77,29 @@ class Server:
             cursor = conn.execute("SELECT public_seed, public_salt, server_secret, private_state, current_t FROM server_state WHERE id = 1")
             row = cursor.fetchone()
             if row:
-                return {
-                    'public_seed': row[0],
-                    'public_salt': row[1],
-                    'server_secret': row[2],
-                    'private_state': row[3],
-                    'current_t': row[4]
-                }
+                try:
+                    return {
+                        'public_seed': row[0],
+                        'public_salt': row[1],
+                        'server_secret': self._decrypt_blob(row[2]),
+                        'private_state': self._decrypt_blob(row[3]),
+                        'current_t': row[4]
+                    }
+                except Exception as e:
+                    print(f"CRITICAL: Failed to decrypt server state. Master key mismatch? Error: {e}")
+                    return None
             return None
 
     def _save_state(self):
         with sqlite3.connect(DB_PATH) as conn:
+            # Encrypt sensitive fields
+            enc_secret = self._encrypt_blob(self.server_secret)
+            enc_private = self._encrypt_blob(self.private_state)
+            
             conn.execute("""
                 INSERT OR REPLACE INTO server_state (id, public_seed, public_salt, server_secret, private_state, current_t)
                 VALUES (1, ?, ?, ?, ?, ?)
-            """, (self.public_seed, self.public_salt, self.server_secret, self.private_state, self.current_t))
+            """, (self.public_seed, self.public_salt, enc_secret, enc_private, self.current_t))
 
     def _ensure_public_history_up_to(self, t):
         """Ensures public_history contains X_0 ... X_t."""
