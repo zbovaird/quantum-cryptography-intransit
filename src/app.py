@@ -13,12 +13,20 @@ server_instance = Server()
 
 def run_ticker():
     """Background thread to tick the server clock."""
+    next_tick_time = time.time() + 1
     while True:
-        time.sleep(1)
+        now = time.time()
+        sleep_time = next_tick_time - now
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        
+        next_tick_time += 1
+        
         try:
             # Advance the server state by 1 tick
-            target = server_instance.current_t + 1
-            server_instance.advance_private_state_to(target)
+            if server_instance:
+                target = server_instance.current_t + 1
+                server_instance.advance_private_state_to(target)
         except Exception as e:
             print(f"Ticker error: {e}")
 
@@ -132,6 +140,13 @@ def client_helper():
 @app.route('/reset', methods=['POST'])
 def reset():
     global server_instance
+    # Close existing connection if any (not needed with context managers)
+    
+    # Delete the DB file to truly reset
+    import os
+    if os.path.exists("server_state.db"):
+        os.remove("server_state.db")
+        
     server_instance = Server()
     return jsonify({"message": "Server reset complete"})
 

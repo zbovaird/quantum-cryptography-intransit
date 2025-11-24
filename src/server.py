@@ -1,21 +1,73 @@
 import os
 import struct
 import hmac
+import sqlite3
 from .core import sha256, hkdf, derive_public_key_piece, encrypt_aes_gcm
+
+DB_PATH = "server_state.db"
 
 class Server:
     MAX_FUTURE_TICKS = 100
 
     def __init__(self, public_seed=None, public_salt=None, server_secret=None):
-        self.public_seed = public_seed or os.urandom(32)
-        self.public_salt = public_salt or os.urandom(32)
-        self.server_secret = server_secret or os.urandom(32)
+        self._init_db()
         
-        self.private_state = os.urandom(32) # S_0
-        self.current_t = 0
+        state = self._load_state()
+        if state:
+            print("Loading persisted server state...")
+            self.public_seed = state['public_seed']
+            self.public_salt = state['public_salt']
+            self.server_secret = state['server_secret']
+            self.private_state = state['private_state']
+            self.current_t = state['current_t']
+        else:
+            print("Initializing new server state...")
+            self.public_seed = public_seed or os.urandom(32)
+            self.public_salt = public_salt or os.urandom(32)
+            self.server_secret = server_secret or os.urandom(32)
+            self.private_state = os.urandom(32) # S_0
+            self.current_t = 0
+            self._save_state()
         
         # Cache public history. Start with X_0.
         self.public_history = [self.public_seed]
+        # Re-evolve history if we loaded from DB
+        if self.current_t > 0:
+            self._ensure_public_history_up_to(self.current_t)
+
+    def _init_db(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS server_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    public_seed BLOB NOT NULL,
+                    public_salt BLOB NOT NULL,
+                    server_secret BLOB NOT NULL,
+                    private_state BLOB NOT NULL,
+                    current_t INTEGER NOT NULL
+                )
+            """)
+
+    def _load_state(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.execute("SELECT public_seed, public_salt, server_secret, private_state, current_t FROM server_state WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'public_seed': row[0],
+                    'public_salt': row[1],
+                    'server_secret': row[2],
+                    'private_state': row[3],
+                    'current_t': row[4]
+                }
+            return None
+
+    def _save_state(self):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO server_state (id, public_seed, public_salt, server_secret, private_state, current_t)
+                VALUES (1, ?, ?, ?, ?, ?)
+            """, (self.public_seed, self.public_salt, self.server_secret, self.private_state, self.current_t))
 
     def _ensure_public_history_up_to(self, t):
         """Ensures public_history contains X_0 ... X_t."""
@@ -74,6 +126,9 @@ class Server:
             self.server_secret = self._ratchet_secret(self.server_secret)
             
             self.current_t += 1
+            
+        # Persist the new state
+        self._save_state()
 
     def encrypt_for_alice(self, plaintext: bytes, t_start: int, t_end: int):
         """

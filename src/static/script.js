@@ -4,6 +4,14 @@ let serverCurrentT = 0;
 
 function log(message, type = 'info') {
     console.log(`[${type}] ${message}`);
+    const panel = document.getElementById('protocol-log');
+    if (panel) {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+        panel.appendChild(div);
+        panel.scrollTop = panel.scrollHeight;
+    }
 }
 
 function clearLog() {
