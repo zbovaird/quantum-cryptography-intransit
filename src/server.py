@@ -43,10 +43,18 @@ class Server:
             x_prev = x_curr
             x_curr = x_next
 
+    def _ratchet_secret(self, current_secret):
+        """
+        Ratchets the server secret forward using HKDF.
+        Secret_{t+1} = HKDF(Secret_t, salt="ratchet", info="server_secret_ratchet")
+        """
+        return hkdf(current_secret, 32, salt=b"ratchet", info=b"server_secret_ratchet")
+
     def advance_private_state_to(self, target_t):
         """
         Advances the private state S to S_{target_t}.
         S_{t+1} = H( S_t || X_t || server_secret || t )
+        Also ratchets the server_secret: Secret_{t+1} = Ratchet(Secret_t)
         """
         self._ensure_public_history_up_to(target_t)
         
@@ -61,6 +69,10 @@ class Server:
             
             data = self.private_state + x_t + self.server_secret + t_bytes
             self.private_state = sha256(data)
+            
+            # RATCHET THE SERVER SECRET
+            self.server_secret = self._ratchet_secret(self.server_secret)
+            
             self.current_t += 1
 
     def encrypt_for_alice(self, plaintext: bytes, t_start: int, t_end: int):
@@ -86,14 +98,19 @@ class Server:
         # So we simulate it.
         
         temp_state = self.private_state
+        temp_secret = self.server_secret
         temp_t = self.current_t
         
         # Simulate advance
         while temp_t < t_end:
             x_t = self.public_history[temp_t]
             t_bytes = struct.pack(">Q", temp_t)
-            data = temp_state + x_t + self.server_secret + t_bytes
+            data = temp_state + x_t + temp_secret + t_bytes
             temp_state = sha256(data)
+            
+            # Simulate Ratchet
+            temp_secret = self._ratchet_secret(temp_secret)
+            
             temp_t += 1
             
         # Now temp_state is S_{t_end}.

@@ -68,6 +68,26 @@ class TestTimeEvolvingCrypto(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.server.encrypt_for_alice(b"Fail", 5, 5)
 
+    def test_server_ratchet_forward_secrecy(self):
+        """Verify that the server secret ratchets forward."""
+        # 1. Snapshot secret at t=0
+        initial_secret = self.server.server_secret
+        
+        # 2. Advance to t=1
+        self.server.advance_private_state_to(1)
+        
+        # 3. Verify secret has changed
+        new_secret = self.server.server_secret
+        self.assertNotEqual(initial_secret, new_secret)
+        
+        # 4. Verify direction: New = Ratchet(Old)
+        expected_new = self.server._ratchet_secret(initial_secret)
+        self.assertEqual(new_secret, expected_new)
+        
+        # 5. Verify we cannot go back (conceptually)
+        # If we only have new_secret, we can't get initial_secret.
+        # This is guaranteed by HKDF/SHA256 one-way property.
+        
     def test_late_arrival(self):
         """Verify that if Alice arrives late, she cannot get the key."""
         # Encrypt for t=10
@@ -91,26 +111,9 @@ class TestTimeEvolvingCrypto(unittest.TestCase):
         # But the key for t=10 was H(S_10).
         # So the keys should NOT match.
         
-        keys = self.server.verify_checksum_and_release_private_key_piece(checksum, 10, 10)
-        k_private_late = keys['k_private']
-        
-        # Calculate what the key SHOULD have been (we need a fresh server to know)
-        fresh_server = Server(
-            public_seed=self.server.public_seed, 
-            public_salt=self.server.public_salt, 
-            server_secret=self.server.server_secret
-        )
-        # Inject the original private state (we can't easily get S_0 from the modified server, 
-        # so this test setup is tricky without saving S_0. 
-        # But we can just check if decryption fails.)
-        
-        k_final = alice_derive_final_key(keys['k_public'], k_private_late)
-        
-        # Decryption should fail (garbage output or MAC check fail)
-        # AES-GCM raises InvalidTag if key is wrong.
-        from cryptography.exceptions import InvalidTag
-        with self.assertRaises(InvalidTag):
-            alice_decrypt(enc_data['ciphertext'], k_final, enc_data['nonce'])
+        # The server explicitly checks for expiration and raises ValueError.
+        with self.assertRaises(ValueError):
+            self.server.verify_checksum_and_release_private_key_piece(checksum, 10, 10)
 
 if __name__ == '__main__':
     unittest.main()
