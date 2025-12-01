@@ -12,12 +12,33 @@ Version 3 introduces a robust "Key Wrapping" architecture and an automated Timek
 3.  **Time-Lock**: The server's key evolves every second (via a hash chain). The wrapped key can only be unwrapped if the server is at the exact specific tick `t` when the key was generated.
 4.  **Timekeeper**: A background thread on the server automatically advances the server tick every second, enforcing real-time expiration.
 
-### Workflow
-1.  **Encrypt**: Client generates a random AES key, encrypts data, and sends the key to the server. Server wraps the key with its current state `S_t` and returns the wrapped key + metadata (nonce, tick `t`).
-2.  **Wait**: The server state evolves (`t` -> `t+1` -> ...).
-3.  **Decrypt**: Client requests decryption.
-    *   If `current_tick == target_tick`: Server unwraps the key and returns it. Client decrypts data.
-    *   If `current_tick != target_tick`: Server cannot derive the correct unwrapping key. Decryption fails permanently.
+### Protocol Sequence
+
+#### 1. Encryption Phase (Alice)
+*   **Key Generation:** Alice's client generates a random, one-time **Session Key** (e.g., AES-256).
+*   **Local Encryption:** Alice uses this Session Key to encrypt her message locally.
+    *   *Result:* **Data Ciphertext** (The encrypted message).
+*   **Key Wrapping Request:** Alice sends *only* the **Session Key** to the Timekeeper Server.
+*   **Time-Locking:** The Timekeeper receives the Session Key, encrypts it with the current ephemeral server key (at `Tick T`), and immediately discards the Session Key.
+    *   *Result:* **Wrapped Key**.
+*   **Package Delivery:** Alice sends the package to Bob (via any channel):
+    *   `Data Ciphertext`
+    *   `Wrapped Key`
+    *   `Target Tick: T`
+
+#### 2. The Waiting Game
+*   The Timekeeper's state evolves (`T` -> `T+1` -> ...).
+*   The key required to unwrap the **Wrapped Key** is only available at `Tick T`.
+*   Once the server moves past `Tick T`, the key is destroyed forever (Forward Secrecy).
+
+#### 3. Decryption Phase (Bob)
+*   **The Clock Strikes:** Bob must attempt decryption while the Timekeeper is exactly at `Tick T`.
+*   **Unwrap Request:** Bob sends the **Wrapped Key** to the Timekeeper.
+*   **Verification:** The Timekeeper checks if `Current Tick == Target Tick`.
+*   **Unwrapping:** If the time is right, the Timekeeper unwraps the key and returns the original **Session Key** to Bob.
+*   **Final Decryption:** Bob uses the Session Key to decrypt the **Data Ciphertext** locally.
+
+If Bob misses the window (even by a second), the Timekeeper cannot mathematically reconstruct the key, and the message is lost forever.
 
 ## Usage
 
