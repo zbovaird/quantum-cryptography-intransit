@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 from src.server import Server
 import binascii
 import time
+import threading
 
 app = Flask(__name__)
 
@@ -9,6 +10,20 @@ app = Flask(__name__)
 # In a real app, we'd need persistent storage or a singleton that doesn't reset on reload.
 # For this PoC, a global variable is fine as long as we don't use multiple workers.
 server_instance = Server()
+
+def ticker_loop():
+    """Background thread to advance server time every second."""
+    print("Starting Timekeeper Ticker...")
+    while True:
+        time.sleep(1)
+        try:
+            # We must refresh state to get the latest t from DB (in case other processes moved it)
+            server_instance.refresh_state()
+            # Advance by 1 tick
+            server_instance.advance_private_state_to(server_instance.current_t + 1)
+            # print(f"TICK: {server_instance.current_t}") 
+        except Exception as e:
+            print(f"Ticker error: {e}")
 
 @app.route('/', methods=['GET'])
 def index():
@@ -51,7 +66,8 @@ def encrypt():
             "t_start": result["t_start"],
             "t_end": result["t_end"],
             "public_seed": result["public_seed"].hex(),
-            "public_salt": result["public_salt"].hex()
+            "public_salt": result["public_salt"].hex(),
+            "request_nonce": request_nonce
         }
         return jsonify(response)
     except Exception as e:
@@ -122,9 +138,10 @@ def client_helper():
         k_final = alice_derive_final_key(keys["k_public"], keys["k_private"])
         decrypted = alice_decrypt(ciphertext, k_final, nonce)
         print(f"DEBUG: Decrypted bytes: {decrypted}")
-        print(f"DEBUG: Decrypted string: {decrypted.decode()}")
         
-        return jsonify({"plaintext": decrypted.decode()})
+        # In v3, the decrypted payload is the Session Key (bytes), not a string.
+        # We return it as hex so the client can import it.
+        return jsonify({"plaintext": decrypted.hex()})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -143,4 +160,8 @@ def reset():
     return jsonify({"message": "Server reset complete"})
 
 if __name__ == '__main__':
+    # Start the Timekeeper in the background
+    t = threading.Thread(target=ticker_loop, daemon=True)
+    t.start()
+    
     app.run(port=5001)

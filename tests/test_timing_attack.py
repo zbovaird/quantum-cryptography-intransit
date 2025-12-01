@@ -24,10 +24,14 @@ def attempt_decrypt(ciphertext_hex, nonce_hex, pub_seed_hex, pub_salt_hex, t_sta
     checksum = alice_compute_checksum(history, t_start, t_end)
 
     # 3. Request Keys
+    # Generate a unique nonce for the verify request
+    verify_nonce = os.urandom(8).hex()
+    
     resp = requests.post(f"{BASE_URL}/verify", json={
         "checksum": binascii.hexlify(checksum).decode(),
         "t_start": t_start,
-        "t_end": t_end
+        "t_end": t_end,
+        "request_nonce": verify_nonce
     })
 
     if resp.status_code != 200:
@@ -59,10 +63,14 @@ def run_test():
     
     # Encrypt
     try:
+        # Generate a unique nonce for the encrypt request
+        encrypt_nonce = os.urandom(8).hex()
+        
         resp = requests.post(f"{BASE_URL}/encrypt", json={
             "plaintext": binascii.hexlify(b"Secret Message").decode(),
             "t_start": current_t,
-            "t_end": target_t
+            "t_end": target_t,
+            "request_nonce": encrypt_nonce
         })
         if resp.status_code != 200:
             print(f"Encryption failed: {resp.text}")

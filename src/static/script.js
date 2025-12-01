@@ -2,62 +2,111 @@ let currentEncryption = null;
 let encryptionHistory = [];
 let serverCurrentT = 0;
 
-function log(message, type = 'info') {
-    console.log(`[${type}] ${message}`);
+// --- Log Function ---
+function log(message, type = 'system') {
     const panel = document.getElementById('protocol-log');
-    if (panel) {
+    if (!panel) return;
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
+}
+
+// --- Crypto Helpers ---
+async function generateKey() {
+    return await window.crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+}
+
+async function encryptData(key, plaintext) {
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        encoded
+    );
+    return { ciphertext, iv };
+}
+
+async function decryptData(key, ciphertext, iv) {
+    const decrypted = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+}
+
+async function exportKey(key) {
+    return await window.crypto.subtle.exportKey("raw", key);
+}
+
+async function importKey(rawKey) {
+    return await window.crypto.subtle.importKey(
+        "raw",
+        rawKey,
+        "AES-GCM",
+        true,
+        ["encrypt", "decrypt"]
+    );
+}
+
+function buf2hex(buffer) {
+    return [...new Uint8Array(buffer)]
+        .map(x => x.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function hex2buf(hex) {
+    return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+}
+
+function renderViz(t) {
+    const viz = document.getElementById('chain-visualizer');
+    if (!viz) return;
+    viz.innerHTML = '';
+    const start = Math.max(0, t - 5);
+    const len = start + 15; // Show 15 blocks
+
+    for (let i = start; i < len; i++) {
         const div = document.createElement('div');
-        div.className = `log-entry ${type}`;
-        div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
-        panel.appendChild(div);
-        panel.scrollTop = panel.scrollHeight;
+        div.className = 'block';
+        div.innerText = i;
+        if (i <= t) div.classList.add('active');
+        viz.appendChild(div);
     }
 }
 
-function clearLog() {
-    document.getElementById('protocol-log').innerHTML = '<div class="log-entry system">Log cleared.</div>';
+function updateTimeInputs() {
+    const autoStart = document.getElementById('auto-sync-start');
+    const autoEnd = document.getElementById('auto-sync-end');
+    
+    if (autoStart && autoStart.checked) {
+        document.getElementById('t-start').value = serverCurrentT + 10;
+    }
+    
+    if (autoEnd && autoEnd.checked) {
+        const startVal = parseInt(document.getElementById('t-start').value) || serverCurrentT;
+        document.getElementById('t-end').value = startVal + 30;
+    }
 }
 
 async function pollStatus() {
     try {
         const res = await fetch('/status');
         const data = await res.json();
-
         serverCurrentT = data.current_t;
-        document.getElementById('server-t').innerText = data.current_t;
-        document.getElementById('chain-len').innerText = data.public_history_len;
-
-        // Auto-sync logic
-        const autoStart = document.getElementById('auto-sync-start');
-        if (autoStart && autoStart.checked) {
-            document.getElementById('t-start').value = serverCurrentT;
-        }
-
-        const autoEnd = document.getElementById('auto-sync-end');
-        if (autoEnd && autoEnd.checked) {
-            // Only update if the current value is less than target or if we want to keep a constant window
-            // Actually, let's just keep it at T + 30
-            document.getElementById('t-end').value = serverCurrentT + 30;
-        }
-
-        updateVisualizer(data.current_t, data.public_history_len);
+        const timeDisplay = document.getElementById('server-t');
+        if (timeDisplay) timeDisplay.innerText = serverCurrentT;
+        renderViz(serverCurrentT);
+        updateTimeInputs();
     } catch (e) {
-        console.error("Status poll failed", e);
-    }
-}
-
-function updateVisualizer(t, len) {
-    const viz = document.getElementById('chain-visualizer');
-    viz.innerHTML = '';
-
-    // Show last 50 blocks or so
-    const start = Math.max(0, len - 50);
-
-    for (let i = start; i < len; i++) {
-        const div = document.createElement('div');
-        div.className = 'block';
-        if (i <= t) div.classList.add('active');
-        viz.appendChild(div);
+        console.error("Poll failed", e);
     }
 }
 
@@ -66,22 +115,31 @@ async function encrypt() {
     const tStart = parseInt(document.getElementById('t-start').value);
     const tEnd = parseInt(document.getElementById('t-end').value);
 
-    // Convert plaintext to hex
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plaintext);
-    const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Generate random nonce
-    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-
     try {
-        log(`Requesting encryption for window [${tStart}, ${tEnd}] with nonce ${nonce}...`, 'client');
+        log(`Generating ephemeral session key...`, 'client');
+        // 1. Generate Session Key
+        const sessionKey = await generateKey();
+        
+        // 2. Encrypt Data locally
+        log(`Encrypting data locally with session key...`, 'client');
+        const { ciphertext: dataCiphertext, iv: dataIv } = await encryptData(sessionKey, plaintext);
+        
+        // 3. Export Session Key to send to server
+        const rawKey = await exportKey(sessionKey);
+        const keyHex = buf2hex(rawKey);
+        
+        // Generate random nonce for the request
+        const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+
+        log(`Sending Session Key to server for time-locking [${tStart}, ${tEnd}]...`, 'client');
+        
+        // 4. Send Session Key to Server
         const res = await fetch('/encrypt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                plaintext: hex,
+                plaintext: keyHex, // We send the KEY as the plaintext to be locked
                 t_start: tStart,
                 t_end: tEnd,
                 request_nonce: nonce
@@ -91,20 +149,28 @@ async function encrypt() {
         const json = await res.json();
         if (json.error) throw new Error(json.error);
 
-        log(`Received ciphertext: ${json.ciphertext.substring(0, 16)}...`, 'server');
-        log(`Metadata: Public Seed=${json.public_seed.substring(0, 8)}..., Salt=${json.public_salt.substring(0, 8)}...`, 'info');
+        log(`Received Time-Locked Key (Ciphertext): ${json.ciphertext.substring(0, 16)}...`, 'server');
 
-        // Add original plaintext for display purposes
-        json.originalPlaintext = plaintext;
+        // 5. Store everything
+        // We store the DATA ciphertext and IV locally.
+        // We store the KEY ciphertext (from server) to unlock later.
+        
+        const record = {
+            ...json, // server response (ciphertext of key, public_seed, etc)
+            dataCiphertext: buf2hex(dataCiphertext),
+            dataIv: buf2hex(dataIv),
+            originalPlaintext: plaintext // Keep for demo/debug
+        };
 
-        currentEncryption = json;
-        encryptionHistory.push(json);
+        currentEncryption = record;
+        encryptionHistory.push(record);
         renderHistory();
 
-        document.getElementById('encrypt-output').innerHTML = `<span class="success">Encrypted! Ciphertext: ${json.ciphertext.substring(0, 20)}...</span>`;
+        document.getElementById('encrypt-output').innerHTML = `<span class="success">Data Encrypted & Key Time-Locked!</span>`;
         loadFromHistory(encryptionHistory.length - 1);
 
     } catch (e) {
+        console.error(e);
         document.getElementById('encrypt-output').innerHTML = `<span class="error">Error: ${e.message}</span>`;
     }
 }
@@ -135,8 +201,12 @@ function renderHistory() {
 function loadFromHistory(index) {
     const item = encryptionHistory[index];
     currentEncryption = item;
-    document.getElementById('ciphertext-input').value = item.ciphertext;
-    document.getElementById('nonce-input').value = item.nonce;
+    
+    document.getElementById('data-ciphertext-input').value = item.dataCiphertext;
+    document.getElementById('wrapped-key-input').value = item.ciphertext;
+    document.getElementById('data-iv-input').value = item.dataIv;
+    document.getElementById('nonce-input').value = item.request_nonce;
+    
     document.getElementById('decrypt-output').innerHTML = "";
 
     // Reset chain state
@@ -146,7 +216,6 @@ function loadFromHistory(index) {
         btn.disabled = false; // We'll let them click it but show the alert, or disable it? 
         // Let's disable it to be clearer, or just rely on the alert. 
         // The previous code block adds the alert. Let's just reset the flag.
-        // Actually, let's reset the visual state too if we want to be fancy, but the alert is enough.
     }
 
     // Highlight selected
@@ -184,24 +253,9 @@ async function verifyAndDecrypt() {
         return;
     }
 
-    // In this web demo, we cheat slightly by asking the server to verify
-    // using the checksum we would have computed.
-    // Since we don't have JS SHA256 implemented here, we'll rely on the python client logic
-    // but we can simulate the request flow.
-
-    // Actually, to make this work without re-implementing crypto in JS,
-    // we can use a helper endpoint or just rely on the fact that we are demonstrating the *flow*.
-    // Let's try to actually call the verify endpoint.
-
-    // We need the checksum.
-    // Since we can't easily compute it in vanilla JS without a library,
-    // let's add a helper endpoint to the server to "simulate_alice_work"
-    // or just implement a basic SHA256 in JS?
-    // Better: Add a /client-helper endpoint to app.py that does the "Alice" work
-    // given the seed, just for the sake of the web UI demo.
-
     try {
         log(`Sending Checksum to server for verification...`, "client");
+        // The server will decrypt the SESSION KEY, not the data
         const res = await fetch('/client-helper', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -214,13 +268,22 @@ async function verifyAndDecrypt() {
 
         log(`Server verified checksum!`, "server");
         log(`Server advanced state to t=${currentEncryption.t_end} (BURN EVENT)`, "server");
-        log(`Received Private Key Piece.`, "client");
-        log(`Deriving Final Key = HKDF(Public Piece || Private Piece)...`, "client");
-        log(`Decrypting...Success!`, "client");
+        log(`Received Decrypted Session Key.`, "client");
 
-        // Now we have keys, let's decrypt (also helper or JS?)
-        // Let's use the helper for decryption too to keep JS simple
-        document.getElementById('decrypt-output').innerHTML = `<span class="success">Decrypted: ${data.plaintext}</span>`;
+        // data.plaintext is the HEX encoded session key
+        const sessionKeyHex = data.plaintext;
+        const sessionKeyRaw = hex2buf(sessionKeyHex);
+        
+        log(`Importing Session Key...`, "client");
+        const sessionKey = await importKey(sessionKeyRaw);
+
+        log(`Decrypting Data locally...`, "client");
+        const dataCiphertext = hex2buf(currentEncryption.dataCiphertext);
+        const dataIv = hex2buf(currentEncryption.dataIv);
+
+        const decryptedText = await decryptData(sessionKey, dataCiphertext, dataIv);
+
+        document.getElementById('decrypt-output').innerHTML = `<span class="success">Decrypted: ${decryptedText}</span>`;
     } catch (e) {
         log(`Decryption failed: ${e.message} `, "error");
         document.getElementById('decrypt-output').innerHTML = `<span class="error">Decryption Failed: ${e.message}</span>`;
@@ -251,6 +314,9 @@ function waitAndDecrypt() {
     log(`Auto-Decrypt: Waiting for t=${targetT}...`, "info");
 
     waitInterval = setInterval(() => {
+        // Force a poll to get the latest time
+        pollStatus();
+        
         const timeLeft = targetT - serverCurrentT;
 
         if (timeLeft > 0) {
@@ -273,7 +339,7 @@ function waitAndDecrypt() {
             btn.disabled = false;
             btn.innerText = "3. Wait & Decrypt (Auto)";
         }
-    }, 500); // Check twice a second to be sure
+    }, 250); // Check 4 times a second
 }
 
 async function resetServer() {
@@ -284,8 +350,12 @@ async function resetServer() {
         document.getElementById('plaintext').value = "The eagle flies at midnight";
         document.getElementById('t-start').value = "10";
         document.getElementById('t-end').value = "15";
-        document.getElementById('ciphertext-input').value = "";
+        
+        document.getElementById('data-ciphertext-input').value = "";
+        document.getElementById('wrapped-key-input').value = "";
+        document.getElementById('data-iv-input').value = "";
         document.getElementById('nonce-input').value = "";
+        
         document.getElementById('encrypt-output').innerHTML = "";
         document.getElementById('decrypt-output').innerHTML = "";
         currentEncryption = null;
@@ -297,6 +367,6 @@ async function resetServer() {
     }
 }
 
-// Poll every second
-setInterval(pollStatus, 1000);
+// Poll every 250ms to catch the 1-second window reliably
+setInterval(pollStatus, 250);
 pollStatus();
