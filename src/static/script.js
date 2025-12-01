@@ -176,6 +176,10 @@ async function pollStatus() {
         serverCurrentT = data.current_t;
         const timeDisplay = document.getElementById('server-t');
         if (timeDisplay) timeDisplay.innerText = serverCurrentT;
+        
+        const chainLenDisplay = document.getElementById('chain-len');
+        if (chainLenDisplay) chainLenDisplay.innerText = data.public_history_len;
+
         renderViz(serverCurrentT);
         updateTimeInputs();
     } catch (e) {
@@ -362,6 +366,11 @@ async function verifyAndDecrypt() {
             })
         });
         
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Server returned ${res.status}: ${text.substring(0, 100)}`);
+        }
+
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
