@@ -73,14 +73,28 @@
             <!-- Decryption Panel -->
             <div class="card decryption">
                 <h2>Decrypt Message</h2>
+                
                 <div class="form-group">
-                    <label>Ciphertext (Hex)</label>
-                    <textarea id="ciphertext-input" rows="2" readonly></textarea>
+                    <label>Data Ciphertext (Client-Encrypted)</label>
+                    <textarea id="data-ciphertext-input" rows="2" readonly></textarea>
                 </div>
+                
                 <div class="form-group">
-                    <label>Nonce (Hex)</label>
-                    <input type="text" id="nonce-input" readonly>
+                    <label>Wrapped Key (Server-Encrypted)</label>
+                    <textarea id="wrapped-key-input" rows="2" readonly></textarea>
                 </div>
+
+                <div class="form-row">
+                     <div class="form-group">
+                        <label>Data IV</label>
+                        <input type="text" id="data-iv-input" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Request Nonce</label>
+                        <input type="text" id="nonce-input" readonly>
+                    </div>
+                </div>
+
                 <div class="actions">
                     <button class="secondary" onclick="computeChain()">1. Compute Chain</button>
                     <button class="secondary" onclick="verifyAndDecrypt()">2. Verify & Decrypt (Manual)</button>
