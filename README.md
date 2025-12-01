@@ -33,10 +33,10 @@ Version 3 introduces a robust "Key Wrapping" architecture and an automated Timek
 
 #### 3. Decryption Phase (Bob)
 *   **The Clock Strikes:** Bob must attempt decryption while the Timekeeper is exactly at `Tick T`.
-*   **Unwrap Request:** Bob sends the **Wrapped Key** to the Timekeeper.
-*   **Verification:** The Timekeeper checks if `Current Tick == Target Tick`.
-*   **Unwrapping:** If the time is right, the Timekeeper unwraps the key and returns the original **Session Key** to Bob.
-*   **Final Decryption:** Bob uses the Session Key to decrypt the **Data Ciphertext** locally.
+*   **Verification Request:** Bob computes the public chain checksum locally and sends it to the Timekeeper.
+*   **Verification:** The Timekeeper checks if `Current Tick == Target Tick` and verifies the checksum.
+*   **Key Release:** If verified, the Timekeeper releases the **Private Key Piece** (`k_private`) to Bob.
+*   **Client-Side Unwrapping:** Bob's client derives the final key (using `k_public` + `k_private`), unwraps the **Session Key**, and then decrypts the **Data Ciphertext** locally. The server never sees the Session Key during decryption.
 
 If Bob misses the window (even by a second), the Timekeeper cannot mathematically reconstruct the key, and the message is lost forever.
 
